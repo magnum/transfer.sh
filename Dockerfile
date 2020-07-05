@@ -1,18 +1,25 @@
-FROM golang
-MAINTAINER Remco Verhoef <remco@dutchcoders.io>
+# Default to Go 1.13
+ARG GO_VERSION=1.13
+FROM golang:${GO_VERSION}-alpine as build
 
-RUN mkdir -p /go/src/app
-WORKDIR /go/src/app
+# Necessary to run 'go get' and to compile the linked binary
+RUN apk add git musl-dev
 
-# Copy the local package files to the container's workspace.
-ADD ./transfersh-server /go/src/app
+ADD . /go/src/github.com/dutchcoders/transfer.sh
 
-# install dependencies
-RUN go get ./
+WORKDIR /go/src/github.com/dutchcoders/transfer.sh
+
+ENV GO111MODULE=on
 
 # build & install server
-RUN go install . 
+RUN go get -u ./... && CGO_ENABLED=0 go build -ldflags -a -tags netgo -ldflags '-w -extldflags "-static"' -o /go/bin/transfersh github.com/dutchcoders/transfer.sh
 
-ENTRYPOINT /go/bin/app --port 8080  
+FROM scratch AS final
+LABEL maintainer="Andrea Spacca <andrea.spacca@gmail.com>"
+
+COPY --from=build  /go/bin/transfersh /go/bin/transfersh
+COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+
+ENTRYPOINT ["/go/bin/transfersh", "--listener", ":8080"]
 
 EXPOSE 8080
